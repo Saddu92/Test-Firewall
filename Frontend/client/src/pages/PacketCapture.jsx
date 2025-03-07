@@ -8,6 +8,7 @@ function PacketCapture() {
   const [alert, setAlert] = useState("");
   const [packetData, setPacketData] = useState([]);
 
+  // Function to start packet capture and prediction
   const startCapture = async () => {
     setLoading(true);
     setAlert("");
@@ -24,6 +25,17 @@ function PacketCapture() {
       console.error("Error:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Function to drop packets from a specific IP
+  const dropPackets = async (ip) => {
+    try {
+      await axios.post("http://127.0.0.1:8000/drop-packets/", { ip });
+      alert(`Packets from ${ip} have been dropped.`);
+    } catch (error) {
+      console.error("Error dropping packets:", error);
+      alert("Failed to drop packets.");
     }
   };
 
@@ -88,6 +100,7 @@ function PacketCapture() {
                     <th className="px-4 py-2">Destination Port</th>
                     <th className="px-4 py-2">Packet Length</th>
                     <th className="px-4 py-2">Prediction</th>
+                    <th className="px-4 py-2">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -104,6 +117,16 @@ function PacketCapture() {
                         <span className={`px-2 py-1 rounded ${predictions[index] === 1 ? 'bg-red-500' : 'bg-green-500'}`}>
                           {predictions[index] === 1 ? 'Threat' : 'Normal'}
                         </span>
+                      </td>
+                      <td className="px-4 py-2">
+                        {predictions[index] === 1 && (
+                          <button
+                            onClick={() => dropPackets(packet['Source IP'])}
+                            className="bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-2 rounded"
+                          >
+                            Drop Packets
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}

@@ -12,41 +12,28 @@ function CsvAnalyzer() {
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
-  
+
     setLoading(true);
     setAlert("");
     setPredictions([]);
     setPacketData([]);
-  
+
     const formData = new FormData();
     formData.append("file", file);
-  
+
     try {
-      const response = await fetch("http://127.0.0.1:8000/predict-csv", {
-        method: "POST",
-        body: formData,
+      const response = await axios.post("http://127.0.0.1:8000/predict-csv/", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
       });
-  
-      // Check if the response is OK (status code 200-299)
-      if (!response.ok) {
-        throw new Error(`HTTP error! Status: ${response.status}`);
-      }
-  
-      // Parse the response as JSON
-      const data = await response.json();
-      console.log("Response Data:", data); // Log the response data for debugging
-  
-      // Check if the required fields exist in the response
-      if (!data.predictions || !data.packet_data) {
-        throw new Error("Invalid response format from server");
-      }
-  
+
       // Update state with the response data
-      setPredictions(data.predictions);
-      setPacketData(data.packet_data);
-  
+      setPredictions(response.data.predictions);
+      setPacketData(response.data.packet_data);
+
       // Show an alert if a threat is detected
-      if (data.predictions.includes(1)) {
+      if (response.data.predictions.includes(1)) {
         setAlert("🚨 Suspicious Network Activity Detected!");
       }
     } catch (error) {
@@ -54,6 +41,17 @@ function CsvAnalyzer() {
       setAlert("Failed to process the CSV file.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Function to drop packets from a specific IP
+  const dropPackets = async (ip) => {
+    try {
+      await axios.post("http://127.0.0.1:8000/drop-packets/", { ip });
+      alert(`Packets from ${ip} have been dropped.`);
+    } catch (error) {
+      console.error("Error dropping packets:", error);
+      alert("Failed to drop packets.");
     }
   };
 
@@ -122,6 +120,7 @@ function CsvAnalyzer() {
                     <th className="px-4 py-2">Destination Port</th>
                     <th className="px-4 py-2">Packet Length</th>
                     <th className="px-4 py-2">Prediction</th>
+                    <th className="px-4 py-2">Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -138,6 +137,16 @@ function CsvAnalyzer() {
                         <span className={`px-2 py-1 rounded ${predictions[index] === 1 ? 'bg-red-500' : 'bg-green-500'}`}>
                           {predictions[index] === 1 ? 'Threat' : 'Normal'}
                         </span>
+                      </td>
+                      <td className="px-4 py-2">
+                        {predictions[index] === 1 && (
+                          <button
+                            onClick={() => dropPackets(packet['Source IP'])}
+                            className="bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-2 rounded"
+                          >
+                            Drop Packets
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}

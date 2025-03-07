@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Request
 from fastapi.responses import JSONResponse
 from scapy.all import sniff
 from collections import defaultdict
@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sklearn.preprocessing import LabelEncoder, MinMaxScaler
 import joblib
 import os
+import subprocess
 
 app = FastAPI()
 print("Server Started")
@@ -14,7 +15,7 @@ print("Server Started")
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # Allow all origins
+    allow_origins=["http://localhost:5173"],  # Allow frontend origin
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -186,8 +187,18 @@ def make_predictions(df):
     predictions = model.predict(df)
     return predictions.tolist()
 
+# Endpoint to drop packets from a specific IP
+@app.post("/drop-packets/")
+async def drop_packets(ip: str):
+    try:
+        # Use iptables to drop packets from the specified IP
+        subprocess.run(["iptables", "-A", "INPUT", "-s", ip, "-j", "DROP"], check=True)
+        return {"message": f"Packets from {ip} have been dropped."}
+    except subprocess.CalledProcessError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to drop packets: {str(e)}")
+
 # Endpoint for live packet capture and prediction
-@app.post("/start-capture-and-predict/")
+@app.post("/start-capture-and-predict/") 
 async def start_capture_and_predict():
     global captured_packets, flows
     captured_packets = []  # Reset captured packets
@@ -212,6 +223,7 @@ async def start_capture_and_predict():
 
     # Prepare packet data for response
     packet_data = []
+    malicious_ips = set()  # Track malicious IPs
     for i, packet in enumerate(captured_packets):
         packet_info = {
             'Source IP': packet['IP'].src if packet.haslayer('IP') else None,
@@ -222,6 +234,18 @@ async def start_capture_and_predict():
             'Packet Length': len(packet),
         }
         packet_data.append(packet_info)
+
+        # If the packet is predicted as malicious, add the source IP to the malicious_ips set
+        if predictions[i] == 1:
+            malicious_ips.add(packet_info['Source IP'])
+
+    # Drop packets from malicious IPs
+    for ip in malicious_ips:
+        try:
+            subprocess.run(["iptables", "-A", "INPUT", "-s", ip, "-j", "DROP"], check=True)
+            print(f"Packets from {ip} have been dropped.")
+        except subprocess.CalledProcessError as e:
+            print(f"Failed to drop packets from {ip}: {str(e)}")
 
     return JSONResponse(content={
         "message": "Packet capture, processing, and prediction completed.",
@@ -237,12 +261,12 @@ async def predict_csv(file: UploadFile = File(...)):
 
     # Read the CSV file
     try:
-        df = pd.read_csv(file.file)
+        df = pd.read_csv(file.file)  # Read the CSV file first
+        required_columns = ["Dst Port", "Protocol", "Flow Duration", "Tot Fwd Pkts", "Tot Bwd Pkts", 
+                            "Fwd Pkt Len Mean", "Bwd Pkt Len Mean", "Flow Byts/s", "SYN Flag Cnt"]
+        df = df[required_columns]  # Select the required columns
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error reading CSV file: {str(e)}")
-
-    # Preprocess the data
-    # df = preprocess_features(df) taaki wapas preprocess na kar sake
 
     # Make predictions
     predictions = make_predictions(df)
