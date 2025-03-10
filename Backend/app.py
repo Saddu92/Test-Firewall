@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, File, UploadFile
 from fastapi.responses import JSONResponse
 from scapy.all import sniff
 from collections import defaultdict
@@ -8,6 +8,10 @@ from sklearn.preprocessing import LabelEncoder, MinMaxScaler
 import joblib
 import os
 import subprocess
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from pydantic import BaseModel
 
 app = FastAPI()
 print("Server Started")
@@ -35,6 +39,43 @@ if os.path.exists(MODEL_PATH):
     model = joblib.load(MODEL_PATH)
 else:
     raise FileNotFoundError(f"Model file not found at {MODEL_PATH}")
+
+# Email configuration
+SMTP_SERVER = "smtp.gmail.com"  # Replace with your SMTP server
+SMTP_PORT = 587  # Replace with your SMTP port
+EMAIL_ADDRESS = "shaikhmdsaad92@gmail.com"  # Replace with your email
+EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")  # Replace with your email password
+
+# Pydantic model for email request
+class EmailRequest(BaseModel):
+    recipient_email: str  # Email address of the recipient
+    subject: str          # Subject of the email
+    body: str             # Body/content of the email
+
+# Function to send email notification
+def send_email_notification(recipient_email: str, subject: str, body: str):
+    try:
+        # Create the email
+        msg = MIMEMultipart()
+        msg['From'] = EMAIL_ADDRESS
+        msg['To'] = recipient_email
+        msg['Subject'] = subject
+        msg.attach(MIMEText(body, 'plain'))
+
+        # Connect to the SMTP server and send the email
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls()
+            server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+            server.send_message(msg)
+        
+        return {"message": "Email sent successfully."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to send email: {str(e)}")
+
+# Endpoint to send email
+@app.post("/send-email/")
+async def send_email(email_request: EmailRequest):
+    return send_email_notification(email_request.recipient_email, email_request.subject, email_request.body)
 
 # Function to handle packet capture
 def packet_handler(packet):
@@ -199,7 +240,7 @@ async def drop_packets(ip: str):
 
 # Endpoint for live packet capture and prediction
 @app.post("/start-capture-and-predict/") 
-async def start_capture_and_predict():
+async def start_capture_and_predict(request: Request):
     global captured_packets, flows
     captured_packets = []  # Reset captured packets
     flows = defaultdict(lambda: {
@@ -208,9 +249,13 @@ async def start_capture_and_predict():
         'start_time': None, 'end_time': None
     })
 
+    # Get the user's email from the request body
+    request_data = await request.json()
+    user_email = request_data.get("user_email")
+
     print("Starting packet capture...")
     sniff(iface="Wi-Fi", prn=packet_handler, count=500)  # Capture 500 packets
-    print("Packet capture completed.")
+    print("Packet capture completed.",flush=True)
 
     # Extract features from captured packets
     features_list = extract_features(captured_packets)
@@ -246,6 +291,14 @@ async def start_capture_and_predict():
             print(f"Packets from {ip} have been dropped.")
         except subprocess.CalledProcessError as e:
             print(f"Failed to drop packets from {ip}: {str(e)}")
+
+    # Send email notification if malicious IPs are found
+    if malicious_ips and user_email:
+        send_email_notification(
+            recipient_email=user_email,
+            subject="🚨 Malicious Network Activity Detected",
+            body=f"The following IPs were detected as malicious:\n\n" + "\n".join(malicious_ips)
+        )
 
     return JSONResponse(content={
         "message": "Packet capture, processing, and prediction completed.",
