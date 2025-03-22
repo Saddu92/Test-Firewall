@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import axios from "axios";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, PieChart, Pie, Cell } from "recharts";
+import { ToastContainer, toast } from "react-toastify";
 
 function CsvAnalyzer() {
   const [loading, setLoading] = useState(false);
@@ -12,33 +13,56 @@ function CsvAnalyzer() {
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
-
+  
     setLoading(true);
-    setAlert("");
     setPredictions([]);
     setPacketData([]);
-
+  
     const formData = new FormData();
     formData.append("file", file);
-
+  
     try {
       const response = await axios.post("http://127.0.0.1:8000/predict-csv/", formData, {
         headers: {
           "Content-Type": "multipart/form-data",
         },
       });
-
-      // Update state with the response data
+  
+      console.log("Backend response:", response.data); // Debugging log
+  
       setPredictions(response.data.predictions);
       setPacketData(response.data.packet_data);
-
-      // Show an alert if a threat is detected
+  
+      // Check if any prediction is malicious
       if (response.data.predictions.includes(1)) {
-        setAlert("🚨 Suspicious Network Activity Detected!");
+        toast.error("🚨 Suspicious Network Activity Detected!", {
+          position: "top-right",
+          autoClose: 5000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+        });
+      } else {
+        toast.success("No suspicious activity detected.", {
+          position: "top-right",
+          autoClose: 3000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+        });
       }
     } catch (error) {
       console.error("Error:", error);
-      setAlert("Failed to process the CSV file.");
+      toast.error("Failed to process the CSV file.", {
+        position: "top-right",
+        autoClose: 5000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
     } finally {
       setLoading(false);
     }
@@ -48,10 +72,10 @@ function CsvAnalyzer() {
   const dropPackets = async (ip) => {
     try {
       await axios.post("http://127.0.0.1:8000/drop-packets/", { ip });
-      alert(`Packets from ${ip} have been dropped.`);
+      toast(`Packets from ${ip} have been dropped.`);
     } catch (error) {
       console.error("Error dropping packets:", error);
-      alert("Failed to drop packets.");
+      toast("Failed to drop packets.");
     }
   };
 

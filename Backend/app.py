@@ -26,7 +26,7 @@ app.add_middleware(
 )
 
 # Global variables to store captured packets and flows
-captured_packets = []
+captured_packets = []  # Fixed typo
 flows = defaultdict(lambda: {
     'fwd_pkts': 0, 'bwd_pkts': 0,
     'fwd_len': 0, 'bwd_len': 0,
@@ -255,7 +255,7 @@ async def start_capture_and_predict(request: Request):
 
     print("Starting packet capture...")
     sniff(iface="Wi-Fi", prn=packet_handler, count=500)  # Capture 500 packets
-    print("Packet capture completed.",flush=True)
+    print("Packet capture completed.", flush=True)
 
     # Extract features from captured packets
     features_list = extract_features(captured_packets)
@@ -324,6 +324,9 @@ async def predict_csv(file: UploadFile = File(...)):
     # Make predictions
     predictions = make_predictions(df)
 
+    # Check if any prediction indicates a malicious packet
+    is_malicious = 1 in predictions
+
     # Prepare packet data for response
     packet_data = df.to_dict(orient="records")
 
@@ -331,6 +334,7 @@ async def predict_csv(file: UploadFile = File(...)):
         "message": "CSV file processed successfully.",
         "predictions": predictions,
         "packet_data": packet_data,
+        "is_malicious": is_malicious,  # Indicate whether malicious activity was detected
     })
 
 if __name__ == "__main__":

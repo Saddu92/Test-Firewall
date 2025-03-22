@@ -1,29 +1,35 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import axios from "axios";
+import { useLocation } from "react-router-dom";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
+import { toast, ToastContainer } from "react-toastify";
 
 function PacketCapture() {
   const [loading, setLoading] = useState(false);
   const [predictions, setPredictions] = useState([]);
   const [alert, setAlert] = useState("");
   const [packetData, setPacketData] = useState([]);
-  const [userEmail, setUserEmail] = useState("");
+  const location = useLocation();
+  const userEmail = location.state?.userEmail || ""; // Get user email from login
 
   // Function to start packet capture and prediction
   const startCapture = async () => {
     setLoading(true);
     setAlert("");
     try {
-      const response = await axios.post("http://127.0.0.1:8000/start-capture-and-predict/",{user_email: userEmail,});
+      const response = await axios.post("http://127.0.0.1:8000/start-capture-and-predict/", {
+        user_email: userEmail, // Pass user email to backend
+      });
       setPredictions(response.data.predictions);
-      setPacketData(response.data.packet_data); // Set packet data from backend
+      setPacketData(response.data.packet_data);
 
       // Show an alert if a threat is detected
       if (response.data.predictions.includes(1)) {
-        setAlert("🚨 Suspicious Network Activity Detected!");
+        toast("🚨 Suspicious Network Activity Detected!");
       }
     } catch (error) {
       console.error("Error:", error);
+      setAlert("Failed to start packet capture.");
     } finally {
       setLoading(false);
     }
@@ -36,7 +42,7 @@ function PacketCapture() {
       alert(`Packets from ${ip} have been dropped.`);
     } catch (error) {
       console.error("Error dropping packets:", error);
-      alert("Failed to drop packets.");
+      toast.error("Failed to drop packets.");
     }
   };
 
